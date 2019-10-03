@@ -1,147 +1,54 @@
-const mysql = require('mysql');
-const express = require('express');
+var express = require('express');
+var ParseServer = require('parse-server').ParseServer;
+var path = require('path');
+
+var databaseUri = process.env.DATABASE_URI || process.env.MONGODB_URI;
+
+if (!databaseUri) {
+  console.log('DATABASE_URI not specified, falling back to localhost.');
+}
+
+var api = new ParseServer({
+  databaseURI: databaseUri || 'mongodb://localhost:27017/dev',
+  cloud: process.env.CLOUD_CODE_MAIN || __dirname + '/cloud/main.js',
+  appId: process.env.APP_ID || 'myAppId',
+  masterKey: process.env.MASTER_KEY || '', //Add your master key here. Keep it secret!
+  serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse',  // Don't forget to change to https if needed
+  liveQuery: {
+    classNames: ["Posts", "Comments"] // List of classes to support for query subscriptions
+  }
+});
+// Client-keys like the javascript key or the .NET key are not necessary with parse-server
+// If you wish you require them, you can set them as options in the initialization above:
+// javascriptKey, restAPIKey, dotNetKey, clientKey
+
 var app = express();
-const bodyparser = require('body-parser')
 
+// Serve static assets from the /public folder
+app.use('/public', express.static(path.join(__dirname, '/public')));
 
-app.use(bodyparser.json());
+// Serve the Parse API on the /parse URL prefix
+var mountPath = process.env.PARSE_MOUNT || '/parse';
+app.use(mountPath, api);
 
-var mysqlConnection = mysql.createConnection({
-  host: "ilinkserver.cs.utep.edu",
-  user: "stinevra",
-  password: "*utep2020!",
-  database: "stinevra_db",
-  multipleStatements: true
+// Parse Server plays nicely with the rest of your web routes
+app.get('/', function(req, res) {
+  res.status(200).send('I dream of being a website.  Please star the parse-server repo on GitHub!');
 });
 
-//CHECK CONNECTION TO DB
-// mysqlConnection.connect(function(err) {
-//   if (!err) 
-//     console.log("Connected!");
-//   else
-//     console.log("error")
-// });
-
-//CREATE TABLES
-// mysqlConnection.connect(function(err) {
-//   if (err) throw err;
-//   console.log("Connected!");
-//   var sql = "CREATE TABLE students (name VARCHAR(40), email VARCHAR(50), utepID INT(8), advisor VARCHAR(40), advised BOOL, classification VARCHAR(10), concentration VARCHAR(20))";
-//   mysqlConnection.query(sql, function (err, result) {
-//     if (err) throw err;
-//     console.log("Table created");
-//   });
-// });
-
-//SHOW STUDENTS
-// mysqlConnection.connect(function(err) {
-//   if (err) throw err;
-//   mysqlConnection.query("SELECT * FROM students", function (err, result, fields) {
-//     if (err) throw err;
-//     console.log(result);
-//   });
-// });
-
-// INSTER STUDENTS//
-// mysqlConnection.connect(function(err) {
-//   if (err) throw err;
-//   console.log("Connected!");
-//   var sql = "INSERT INTO students (name, email, utepID, advisor, advised, classification, concentration) VALUES ('Ricardo Martinez', 'rmartinez@miners.utep.edu', 90581052, 'Ceberio', 0, 'senior', 'n/a')";
-//   mysqlConnection.query(sql, function (err, result) {
-//     if (err) throw err;
-//     console.log("1 record inserted");
-//   });
-// });
-
-
-
-app.listen(3000, () => console.log('express server is running at port # 3000'));
-
-
-//get all the students
-app.get('/students', (req, res) => {
-  mysqlConnection.query('SELECT * FROM students', (err, students) => {
-    if (err) console.log(err);
-    else
-      res.send(students);
-  })
+// There will be a test page available on the /test path of your server url
+// Remove this before launching your app
+app.get('/test', function(req, res) {
+  res.sendFile(path.join(__dirname, '/public/test.html'));
 });
 
-
-//get a student by ID
-app.get('/students/:id', (req, res) => {
-  mysqlConnection.query('SELECT * FROM students WHERE utepID = ?', [req.params.id], (err, students) => {
-    if (err) console.log(err);
-    else
-      res.send(students);
-  })
+var port = process.env.PORT || 1337;
+var httpServer = require('http').createServer(app);
+httpServer.listen(port, function() {
+    console.log('parse-server-example running on port ' + port + '.');
 });
 
-
-//Create a student 
-app.post('/students', (req, res) => {
-  let student = req.body;
-  var sql = "SET @name =?; SET @email =?; SET @utepID =?; SET @advisor =?; SET @advised =?; SET @classification =?; SET @concentration =?; \
-  CALL StudentAdd(@name,@email,@utepID,@advisor,@advised,@classification,@concentration);" 
-  mysqlConnection.query(sql,[student.name,student.email,student.utepID,student.advisor,student.advised,student.classification,student.concentration],(err, students) => {
-    if (err) console.log(err);
-    else
-      res.send(students);
-  })
-});
-
-
-//update a student 
-app.put('/students', (req, res) => {
-  let student = req.body;
-  var sql = "SET @name =?; SET @email =?; SET @utepID =?; SET @advisor =?; SET @advised =?; SET @classification =?; SET @concentration =?; \
-  CALL StudentEdit(@name,@email,@utepID,@advisor,@advised,@classification,@concentration);" 
-  mysqlConnection.query(sql,[student.name,student.email,student.utepID,student.advisor,student.advised,student.classification,student.concentration],(err, students) => {
-    if (err) console.log(err);
-    else
-      res.send("updated studemt");
-  })
-});
-
-
-
-//create an Advisor 
-
-//update Advisor    //need to do the script in the DB
-
-app.put('/advisors', (req, res) => {
-  let advisor = req.body;
-  var sql = "SET @name =?; SET @email =?; SET @students =?; SET @id =?;  \
-  CALL AdvisorEdit(@name,@email,@utepID,@advisor,@advised,@classification,@concentration);" 
-  mysqlConnection.query(sql,[advisor.name,advisor.email,advisor.students,advisor.id],(err, advisors) => {
-    if (err) console.log(err);
-    else
-      res.send("updated studemt");
-  })
-});
-
-//get Advisor by name 
-app.get('/advisors/:name', (req, res) => {
-  mysqlConnection.query('SELECT * FROM advisors WHERE name = ?', [req.params.name], (err, advisor) => {
-    if (err) console.log(err);
-    else
-      res.send(advisor);
-  })
-});
-
-
-
-//get all the Advisor
-app.get('/advisors', (req, res) => {
-  mysqlConnection.query('SELECT * FROM advisors', (err, advisors) => {
-    if (err) console.log(err);
-    else
-      res.send(advisors);
-  })
-});
-
-
-
-
+// This will enable the Live Query real-time server
+ParseServer.createLiveQueryServer(httpServer);
 
 
